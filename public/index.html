@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lucid Dreams Clone</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        * { font-family: 'Inter', sans-serif; }
+        
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; margin: 0; padding: 16px; }
+        
+        .dark body { background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%); }
+        .dark .bg-white { background-color: #1f2937; color: #f3f4f6; }
+        .dark .bg-gray-50 { background-color: #111827; }
+        .dark .message-bubble-ai { background-color: #374151; color: #f3f4f6; }
+        .dark .text-gray-600 { color: #9ca3af; }
+        .dark .border { border-color: #4b5563; }
+        .dark .character-card { background-color: #1f2937; color: #f3f4f6; }
+        .dark .text-gray-800 { color: #f3f4f6; }
+        
+        .message-bubble-user { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 20px 20px 4px 20px; padding: 12px 16px; max-width: 80%; align-self: flex-end; margin-bottom: 8px; }
+        .message-bubble-ai { background: white; color: #1a1a1a; border-radius: 20px 20px 20px 4px; padding: 12px 16px; max-width: 80%; align-self: flex-start; margin-bottom: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .chat-container { height: calc(100vh - 180px); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; }
+        .typing-indicator { display: flex; gap: 4px; padding: 12px 16px; background: white; border-radius: 20px; width: fit-content; }
+        .dark .typing-indicator { background-color: #374151; }
+        .typing-dot { width: 8px; height: 8px; background: #999; border-radius: 50%; animation: typing 1.4s infinite; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-10px); } }
+        .character-card { transition: all 0.3s ease; cursor: pointer; }
+        .character-card:hover { transform: scale(1.05); box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+        .generated-image { border-radius: 12px; max-width: 100%; margin-top: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        
+        /* Анимация появления сообщений */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .message-bubble-user, .message-bubble-ai {
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        /* Кнопка перегенерации */
+        .regenerate-btn {
+            transition: all 0.2s ease;
+            font-size: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .regenerate-btn:hover {
+            transform: scale(1.05);
+        }
+        .dark .regenerate-btn {
+            background: linear-gradient(135deg, #4f46e5 0%, #7e22ce 100%);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center">
+    <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
+        <script>
+            const tg = window.Telegram.WebApp;
+            tg.expand();
+            tg.ready();
+            
+            const isDark = tg.colorScheme === 'dark';
+            if (isDark) {
+                document.documentElement.classList.add('dark');
+            }
+            
+            const API_BASE = '';
+            const headers = {
+                'Content-Type': 'application/json',
+                'x-telegram-init-data': tg.initData
+            };
+        </script>
+
+        <div id="app" class="bg-gray-50 dark:bg-gray-900">
+            <div id="loading" class="flex items-center justify-center h-96">
+                <div class="text-center">
+                    <div class="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p class="text-gray-600 dark:text-gray-400">Загрузка...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const App = {
+            user: null,
+            characters: [],
+            currentCharacter: null,
+            messages: [],
+            energy: 0,
+            diamonds: 0,
+            isPremium: false,
+            isTyping: false,
+            isGeneratingImage: false,
+            view: 'characters',
+            
+            async init() {
+                try {
+                    const response = await fetch('/api/user', { headers });
+                    const data = await response.json();
+                    
+                    this.user = data.user;
+                    this.characters = data.characters;
+                    this.energy = data.user.energy;
+                    this.diamonds = data.user.diamonds || 0;
+                    this.isPremium = data.user.is_premium || false;
+                    
+                    this.render();
+                    
+                    if (this.characters.length === 0) {
+                        this.view = 'create';
+                        this.render();
+                    }
+                } catch (error) {
+                    console.error('Init error:', error);
+                }
+            },
+            
+            render() {
+                const app = document.getElementById('app');
+                document.getElementById('loading').style.display = 'none';
+                
+                if (this.view === 'characters') {
+                    app.innerHTML = this.renderCharacters();
+                    this.attachEvents();
+                } else if (this.view === 'create') {
+                    app.innerHTML = this.renderCreate();
+                    this.attachEvents();
+                } else if (this.view === 'chat') {
+                    app.innerHTML = this.renderChat();
+                    this.attachEvents();
+                } else if (this.view === 'shop') {
+                    app.innerHTML = this.renderShop();
+                    this.attachEvents();
+                }
+            },
+            
+            renderCharacters() {
+                return `
+                    <div class="p-6">
+                        <div class="flex justify-between items-center mb-4">
+                            <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Мои девушки</h1>
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm font-medium text-purple-600">💎 ${this.diamonds}</span>
+                                <button id="shopBtn" class="bg-purple-600 text-white p-2 rounded-full hover:bg-purple-700">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                                    </svg>
+                                </button>
+                                <button id="createBtn" class="bg-purple-600 text-white p-2 rounded-full hover:bg-purple-700">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="space-y-3">
+                            ${this.characters.map(char => `
+                                <div class="character-card bg-white dark:bg-gray-800 rounded-xl p-3 shadow-md" data-id="${char.id}">
+                                    <div class="flex items-center gap-3">
+                                        <img src="${char.anchor_image_path || 'https://via.placeholder.com/60'}" class="w-16 h-16 rounded-full object-cover">
+                                        <div>
+                                            <h3 class="font-semibold dark:text-white">${char.name}</h3>
+                                            <p class="text-sm text-gray-600 dark:text-gray-400">${char.personality.substring(0, 30)}...</p>
+                                            <span class="text-xs px-2 py-1 bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded-full">${char.style}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div class="mt-6 bg-white dark:bg-gray-800 rounded-lg p-4">
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="dark:text-gray-300">Энергия</span>
+                                <span class="font-bold text-purple-600">${this.isPremium ? '∞' : '⚡ ' + this.energy + '/20'}</span>
+                            </div>
+                            ${!this.isPremium ? `
+                                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                    <div class="bg-gradient-to-r from-purple-600 to-pink-600 h-2 rounded-full" 
+                                         style="width: ${(this.energy/20)*100}%"></div>
+                                </div>
+                                <button id="buySubscriptionBtn" class="w-full mt-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white py-2 rounded-lg text-sm">
+                                    ⭐ Премиум 349⭐/мес
+                                </button>
+                            ` : '<p class="text-xs text-purple-600 mt-2">Премиум активен</p>'}
+                        </div>
+                    </div>
+                `;
+            },
+            
+            renderCreate() {
+                return `
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <button id="backBtn" class="text-gray-600 dark:text-gray-300 text-xl">←</button>
+                            <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Новая девушка</h1>
+                        </div>
+                        
+                        <form id="createForm" class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Имя</label>
+                                <input type="text" name="name" required placeholder="Например: Маша"
+                                       class="w-full px-4 py-2 border dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Характер</label>
+                                <textarea name="personality" required rows="2" 
+                                          placeholder="Нежная, заботливая, любит романтику..."
+                                          class="w-full px-4 py-2 border dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-purple-500"></textarea>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Стиль</label>
+                                <select name="style" class="w-full px-4 py-2 border dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-lg">
+                                    <option value="realistic">Реалистичный</option>
+                                    <option value="anime">Аниме</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Фото (или оставить пустым)</label>
+                                <input type="file" name="anchorImage" accept="image/*"
+                                       class="w-full px-4 py-2 border dark:border-gray-700 dark:bg-gray-800 dark:text-white rounded-lg">
+                            </div>
+                            
+                            <button type="submit" 
+                                    class="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-lg font-semibold">
+                                Создать
+                            </button>
+                        </form>
+                    </div>
+                `;
+            },
+            
+            renderChat() {
+                return `
+                    <div class="h-full flex flex-col">
+                        <div class="bg-white dark:bg-gray-800 px-4 py-3 border-b dark:border-gray-700 flex items-center gap-3">
+                            <button id="backBtn" class="text-gray-600 dark:text-gray-300 text-xl">←</button>
+                            <img src="${this.currentCharacter?.anchor_image_path}" class="w-10 h-10 rounded-full object-cover">
+                            <div class="flex-1">
+                                <h3 class="font-semibold dark:text-white">${this.currentCharacter?.name}</h3>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">${this.currentCharacter?.personality.substring(0, 30)}...</p>
+                            </div>
+                            <span class="text-sm font-medium text-purple-600">${this.isPremium ? '∞' : '⚡' + this.energy}</span>
+                        </div>
+                        
+                        <div id="chatMessages" class="chat-container bg-gray-50 dark:bg-gray-900">
+                            ${this.messages.map((msg, index) => `
+                                <div class="${msg.isUser ? 'self-end' : 'self-start'} max-w-[80%] mb-2">
+                                    <div class="message-bubble-${msg.isUser ? 'user' : 'ai'}">
+                                        ${msg.text}
+                                    </div>
+                                    ${msg.image ? `
+                                        <div class="mt-1 flex gap-2 items-start">
+                                            <img src="${msg.image}" class="generated-image rounded-lg max-w-[200px]">
+                                            ${!msg.isUser ? `
+                                                <button class="regenerate-btn text-white px-3 py-1.5 rounded-full text-xs font-medium shadow-md hover:shadow-lg"
+                                                        data-message-index="${index}">
+                                                    🔄 Другой вариант
+                                                </button>
+                                            ` : ''}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                            ${this.isTyping ? `
+                                <div class="typing-indicator">
+                                    <div class="typing-dot"></div>
+                                    <div class="typing-dot"></div>
+                                    <div class="typing-dot"></div>
+                                </div>
+                            ` : ''}
+                            ${this.isGeneratingImage ? `
+                                <div class="flex items-center gap-3 mt-4">
+                                    <div class="w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center animate-pulse">
+                                        <span class="text-purple-600 dark:text-purple-300">✨</span>
+                                    </div>
+                                    <div class="text-gray-600 dark:text-gray-400">Генерирую новый образ...</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        
+                        <div class="bg-white dark:bg-gray-800 p-3 border-t dark:border-gray-700">
+                            <form id="chatForm" class="flex gap-2">
+                                <input type="text" id="messageInput" placeholder="*обнимаю тебя*" 
+                                       class="flex-1 px-4 py-2 border dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-full focus:ring-2 focus:ring-purple-500"
+                                       ${(!this.isPremium && this.energy === 0) ? 'disabled' : ''}>
+                                <button type="submit" class="bg-purple-600 text-white p-3 rounded-full hover:bg-purple-700"
+                                        ${(!this.isPremium && this.energy === 0) ? 'disabled' : ''}>
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                                    </svg>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                `;
+            },
+            
+            renderShop() {
+                return `
+                    <div class="p-6">
+                        <div class="flex items-center gap-3 mb-4">
+                            <button id="backBtn" class="text-gray-600 dark:text-gray-300 text-xl">←</button>
+                            <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Магазин</h1>
+                        </div>
+                        
+                        <div class="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
+                            <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Ваш баланс</p>
+                            <p class="text-2xl font-bold text-purple-600">💎 ${this.diamonds}</p>
+                        </div>
+                        
+                        <div class="space-y-3">
+                            <div class="bg-white dark:bg-gray-800 rounded-xl p-4">
+                                <h3 class="font-semibold dark:text-white mb-2">Подарки</h3>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button class="buyDiamondBtn p-2 border dark:border-gray-700 dark:text-white rounded-lg text-sm" data-type="diamonds_100">
+                                        100💎 = 50⭐
+                                    </button>
+                                    <button class="buyDiamondBtn p-2 border dark:border-gray-700 dark:text-white rounded-lg text-sm" data-type="diamonds_500">
+                                        500💎 = 200⭐
+                                    </button>
+                                    <button class="buyDiamondBtn p-2 border dark:border-gray-700 dark:text-white rounded-lg text-sm col-span-2" data-type="diamonds_1000">
+                                        1000💎 = 350⭐
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-white dark:bg-gray-800 rounded-xl p-4">
+                                <h3 class="font-semibold dark:text-white mb-2">Премиум</h3>
+                                <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">Безлимит сообщений, все функции</p>
+                                <button id="buySubscriptionShopBtn" class="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-2 rounded-lg">
+                                    349⭐/мес
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            },
+            
+            // ЗАГРУЗКА ИСТОРИИ ИЗ LOCALSTORAGE
+            loadHistory() {
+                const saved = localStorage.getItem(`chat_${this.currentCharacter.id}`);
+                if (saved) {
+                    this.messages = JSON.parse(saved);
+                } else {
+                    this.messages = [];
+                }
+                this.render();
+            },
+            
+            // СОХРАНЕНИЕ ИСТОРИИ В LOCALSTORAGE
+            saveToLocalStorage() {
+                localStorage.setItem(`chat_${this.currentCharacter.id}`, JSON.stringify(this.messages));
+            },
+            
+            attachEvents() {
+                document.getElementById('backBtn')?.addEventListener('click', () => {
+                    this.view = 'characters';
+                    this.render();
+                });
+                
+                document.getElementById('createBtn')?.addEventListener('click', () => {
+                    this.view = 'create';
+                    this.render();
+                });
+                
+                document.getElementById('shopBtn')?.addEventListener('click', () => {
+                    this.view = 'shop';
+                    this.render();
+                });
+                
+                document.querySelectorAll('.character-card').forEach(card => {
+                    card.addEventListener('click', () => {
+                        const id = card.dataset.id;
+                        this.currentCharacter = this.characters.find(c => c.id == id);
+                        this.loadHistory(); // загружаем из localStorage
+                        this.view = 'chat';
+                        this.render();
+                    });
+                });
+                
+                document.getElementById('createForm')?.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(e.target);
+                    
+                    const response = await fetch('/api/characters', {
+                        method: 'POST',
+                        headers: { 'x-telegram-init-data': tg.initData },
+                        body: formData
+                    });
+                    
+                    if (response.ok) {
+                        const char = await response.json();
+                        this.characters.push(char);
+                        this.view = 'characters';
+                        this.render();
+                    }
+                });
+                
+                document.getElementById('buySubscriptionBtn')?.addEventListener('click', () => this.buySubscription());
+                document.getElementById('buySubscriptionShopBtn')?.addEventListener('click', () => this.buySubscription());
+                
+                document.querySelectorAll('.buyDiamondBtn').forEach(btn => {
+                    btn.addEventListener('click', () => this.buyDiamonds(btn.dataset.type));
+                });
+                
+                // КНОПКИ ПЕРЕГЕНЕРАЦИИ
+                document.querySelectorAll('.regenerate-btn').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const index = btn.dataset.messageIndex;
+                        const msg = this.messages[index];
+                        
+                        this.isGeneratingImage = true;
+                        this.render();
+                        
+                        try {
+                            const response = await fetch(`/api/regenerate-image/${this.currentCharacter.id}`, {
+                                method: 'POST',
+                                headers,
+                                body: JSON.stringify({ prompt: msg.prompt || 'тот же промт' })
+                            });
+                            
+                            const data = await response.json();
+                            msg.image = data.imageUrl;
+                            
+                            // ВИБРАЦИЯ при перегенерации
+                            tg.HapticFeedback.impactOccurred('medium');
+                            
+                        } catch (error) {
+                            console.error('Regenerate error:', error);
+                        }
+                        
+                        this.isGeneratingImage = false;
+                        this.render();
+                    });
+                });
+                
+                // ЧАТ
+                document.getElementById('chatForm')?.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const input = document.getElementById('messageInput');
+                    const message = input.value.trim();
+                    if (!message || (!this.isPremium && this.energy === 0)) return;
+                    
+                    this.messages.push({ text: message, isUser: true });
+                    input.value = '';
+                    this.isTyping = true;
+                    this.isGeneratingImage = true;
+                    this.render();
+                    
+                    const response = await fetch(`/api/chat/${this.currentCharacter.id}`, {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({ message })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    this.messages.push({ 
+                        text: data.text, 
+                        isUser: false, 
+                        image: data.imageUrl,
+                        prompt: data.prompt
+                    });
+                    
+                    // СОХРАНЯЕМ В LOCALSTORAGE
+                    this.saveToLocalStorage();
+                    
+                    if (!this.isPremium) this.energy = data.energy;
+                    this.isTyping = false;
+                    this.isGeneratingImage = false;
+                    
+                    // ВИБРАЦИЯ при получении ответа
+                    tg.HapticFeedback.impactOccurred('light');
+                    
+                    this.render();
+                });
+            },
+            
+            async buySubscription() {
+                const response = await fetch('/api/create-star-invoice', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ type: 'subscription' })
+                });
+                
+                const data = await response.json();
+                tg.openInvoice(data.invoice_link, (status) => {
+                    if (status === 'paid') {
+                        tg.showAlert('Спасибо! Премиум активирован');
+                        this.init();
+                    }
+                });
+            },
+            
+            async buyDiamonds(type) {
+                const response = await fetch('/api/create-star-invoice', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ type })
+                });
+                
+                const data = await response.json();
+                tg.openInvoice(data.invoice_link, (status) => {
+                    if (status === 'paid') {
+                        tg.showAlert('Алмазы зачислены');
+                        this.init();
+                    }
+                });
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => App.init());
+    </script>
+</body>
+</html>
