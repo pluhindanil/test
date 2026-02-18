@@ -2,8 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-
-const { Pool } = require('pg');
+const sqlite3 = require('sqlite3');
+const { open } = require('sqlite');
 const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
@@ -20,7 +20,7 @@ app.use(express.static('public'));
 app.use('/uploads', express.static('uploads'));
 
 // Константы
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const UPLOADS_DIR = path.join();
 if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
@@ -30,10 +30,6 @@ const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
 });
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
 // ==================== БАЗА ДАННЫХ ====================
 let dbPromise = null;
 
@@ -81,6 +77,43 @@ async function getDb() {
                     FOREIGN KEY(character_id) REFERENCES characters(id)
                 );
             `);
+
+            // ==================== ВОТ СЮДА ВСТАВЛЯЕМ НОВЫЙ КОД ====================
+            const charactersCount = await db.get('SELECT COUNT(*) as count FROM characters');
+            
+            if (charactersCount.count === 0) {
+                console.log('📝 Добавляем готовых девушек в базу данных...');
+                
+                await db.run(
+                    `INSERT INTO characters (user_id, name, personality, style, created_at) 
+                     VALUES (?, ?, ?, ?, datetime('now'))`,
+                    [0, 'Маша', 'Нежная, заботливая, любит романтику', 'realistic']
+                );
+                
+                await db.run(
+                    `INSERT INTO characters (user_id, name, personality, style, created_at) 
+                     VALUES (?, ?, ?, ?, datetime('now'))`,
+                    [0, 'Алиса', 'Страстная, дерзкая, обожает приключения', 'realistic']
+                );
+                
+                await db.run(
+                    `INSERT INTO characters (user_id, name, personality, style, created_at) 
+                     VALUES (?, ?, ?, ?, datetime('now'))`,
+                    [0, 'Лена', 'Скромная, интеллигентная', 'realistic']
+                );
+                
+                await db.run(
+                    `INSERT INTO characters (user_id, name, personality, style, created_at) 
+                     VALUES (?, ?, ?, ?, datetime('now'))`,
+                    [0, 'Сакура', 'Загадочная аниме-девушка с востока', 'anime']
+                );
+                
+                console.log('✅ 4 готовые девушки добавлены!');
+            } else {
+                console.log('✅ Девушки уже есть в базе, пропускаем добавление');
+            }
+            // ==================== КОНЕЦ ВСТАВКИ ====================
+
             return db;
         });
     }
@@ -474,9 +507,9 @@ function getFallbackTextResponse(charName, userMessage) {
 app.get('/api/user', authMiddleware, async (req, res) => {
     try {
         const characters = await req.db.all(
-            'SELECT * FROM characters WHERE user_id = ?',
-            [req.dbUser.id]
-        );
+    'SELECT * FROM characters WHERE user_id = ? OR user_id = 0 ORDER BY user_id DESC',
+    [req.dbUser.id]
+    );
         
         res.json({
             user: req.dbUser,
