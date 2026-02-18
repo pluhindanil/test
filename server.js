@@ -2,8 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const axios = require('axios');
-const sqlite3 = require('sqlite3');
-const { open } = require('sqlite');
+
+const { Pool } = require('pg');
 const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
@@ -30,6 +30,10 @@ const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN,
 });
 
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 // ==================== БАЗА ДАННЫХ ====================
 let dbPromise = null;
 
