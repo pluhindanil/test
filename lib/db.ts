@@ -138,6 +138,7 @@ export interface DBUser {
   messages_today: number;
   images_today: number;
   last_reset_date: string;
+  diamonds: number;
 }
 
 export interface DBCharacter {

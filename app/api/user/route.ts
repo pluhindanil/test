@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       telegramId: dbUser.telegram_id,
       username: dbUser.username,
       firstName: dbUser.first_name,
+      diamonds: dbUser.diamonds ?? 0,
     },
     limits: getLimits(dbUser),
     characters: await getAllCharacters(),
