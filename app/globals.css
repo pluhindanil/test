@@ -445,6 +445,19 @@ body {
 /* ============================================================
    CHAT SCREEN
    ============================================================ */
+
+/* Prevent iOS bounce scroll on the whole page in chat */
+.chat-screen {
+  display: flex;
+  flex-direction: column;
+  height: var(--tg-viewport-height, 100dvh);
+  background: var(--bg);
+  overflow: hidden;
+  /* iOS keyboard: push content up when keyboard appears */
+  position: fixed;
+  inset: 0;
+}
+
 .chat-header {
   padding: max(52px, calc(env(safe-area-inset-top) + 12px)) 16px 14px;
   border-bottom: 1px solid var(--border);
@@ -453,6 +466,8 @@ body {
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+  /* Prevent shrink under iOS status bar */
+  min-height: calc(env(safe-area-inset-top) + 64px);
 }
 
 .back-btn {
@@ -505,16 +520,20 @@ body {
 
 /* Chat input */
 .chat-input-wrap {
-  background: rgba(13,11,26,0.92);
+  background: rgba(13,11,26,0.95);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border-top: 1px solid var(--border);
   padding: 10px 16px;
-  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  /* iOS home indicator safe area */
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
   display: flex;
   gap: 10px;
   align-items: flex-end;
   flex-shrink: 0;
+  /* Stay above keyboard on iOS */
+  position: relative;
+  z-index: 10;
 }
 .chat-input-lumina {
   flex: 1;
@@ -522,7 +541,8 @@ body {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 10px 18px;
-  font-size: 14px;
+  /* 16px minimum to prevent iOS zoom-in on focus */
+  font-size: 16px;
   color: var(--text-primary);
   font-family: var(--font-body);
   outline: none;
@@ -530,6 +550,9 @@ body {
   resize: none;
   max-height: 120px;
   line-height: 1.4;
+  /* Prevent iOS default styling */
+  -webkit-appearance: none;
+  appearance: none;
 }
 .chat-input-lumina::placeholder { color: var(--text-muted); }
 .chat-input-lumina:focus { border-color: var(--border-hover); }

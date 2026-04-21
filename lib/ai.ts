@@ -118,8 +118,7 @@ export interface ImageResult {
 }
 
 /**
- * Generates image via fal.ai (Flux.1) — primary provider.
- * Falls back to Replicate (SDXL) if fal fails.
+ * Generates image — tries fal.ai first (if key set), then Replicate.
  */
 export async function generateImage(
   prompt: string,
@@ -127,12 +126,23 @@ export async function generateImage(
 ): Promise<ImageResult> {
   const styledPrompt = applyStyleModifiers(prompt, style);
 
-  try {
-    return await generateWithFal(styledPrompt, style);
-  } catch (e) {
-    console.error("fal.ai failed, trying Replicate:", e);
-    return await generateWithReplicate(styledPrompt, style);
+  const hasFal       = !!process.env.FAL_API_KEY;
+  const hasReplicate = !!process.env.REPLICATE_API_TOKEN;
+
+  if (!hasFal && !hasReplicate) {
+    throw new Error("No image generation API keys configured");
   }
+
+  if (hasFal) {
+    try {
+      return await generateWithFal(styledPrompt, style);
+    } catch (e) {
+      console.error("fal.ai failed:", e);
+      if (!hasReplicate) throw e;
+    }
+  }
+
+  return await generateWithReplicate(styledPrompt, style);
 }
 
 function applyStyleModifiers(prompt: string, style: ImageStyle): string {
@@ -185,18 +195,18 @@ async function generateWithFal(prompt: string, style: ImageStyle): Promise<Image
   throw new Error("fal timeout");
 }
 
-// ── Replicate (Flux Schnell) fallback ────────────────
+// ── Replicate (Flux Schnell) ─────────────────────────
 async function generateWithReplicate(prompt: string, style: ImageStyle): Promise<ImageResult> {
   const REPLICATE_KEY = process.env.REPLICATE_API_TOKEN ?? "";
   if (!REPLICATE_KEY) throw new Error("REPLICATE_API_TOKEN not set");
 
-  // Flux Schnell — fast, free, works for both styles
+  // Prefer: wait=55 — Replicate returns synchronously if done within 55s
   const createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${REPLICATE_KEY}`,
       "Content-Type": "application/json",
-      "Prefer": "wait=60",
+      "Prefer": "wait=55",
     },
     body: JSON.stringify({
       input: {
@@ -205,25 +215,27 @@ async function generateWithReplicate(prompt: string, style: ImageStyle): Promise
         aspect_ratio: "3:4",
         output_format: "webp",
         output_quality: 80,
+        num_inference_steps: 4, // Flux Schnell optimal
       },
     }),
   });
 
   if (!createRes.ok) {
     const err = await createRes.text();
-    throw new Error(`replicate create: ${createRes.status} ${err}`);
+    throw new Error(`replicate: ${createRes.status} ${err}`);
   }
   const prediction = await createRes.json();
 
-  // If Prefer: wait= returned a completed result immediately
+  // Synchronous result (Prefer: wait worked)
   if (prediction.status === "succeeded" && prediction.output?.[0]) {
     return { url: prediction.output[0], provider: "replicate" };
   }
 
+  // Async fallback — poll up to 20s more
   const pollUrl = prediction.urls?.get;
   if (!pollUrl) throw new Error("replicate: no poll URL");
 
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 10; i++) {
     await sleep(2000);
     const pollRes = await fetch(pollUrl, {
       headers: { "Authorization": `Bearer ${REPLICATE_KEY}` },

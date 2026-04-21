@@ -25,13 +25,27 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
 
-  // Telegram back button
+  // Telegram back button + expand to full screen + viewport tracking
   useEffect(() => {
     if (!tg) return;
     tg.BackButton.show();
+    tg.expand(); // ensure full screen on iPhone
     const back = () => router.push("/");
     tg.BackButton.onClick(back);
-    return () => { tg.BackButton.offClick(back); tg.BackButton.hide(); };
+    // Track viewport changes (keyboard open/close on iOS)
+    const onViewportChanged = () => {
+      document.documentElement.style.setProperty(
+        "--tg-viewport-height",
+        `${tg.viewportHeight}px`
+      );
+    };
+    tg.onEvent("viewportChanged", onViewportChanged);
+    onViewportChanged(); // set initial value
+    return () => {
+      tg.BackButton.offClick(back);
+      tg.BackButton.hide();
+      tg.offEvent("viewportChanged", onViewportChanged);
+    };
   }, [tg, router]);
 
   // Load history & character info
@@ -120,7 +134,7 @@ export default function ChatPage() {
   const ringGrad = CHAR_RING_GRAD[slug] ?? "linear-gradient(135deg, #8b5cf6, #ec4899)";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg)" }}>
+    <div className="chat-screen">
 
       {/* Header */}
       <div className="chat-header">
