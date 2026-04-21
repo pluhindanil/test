@@ -29,40 +29,52 @@ interface Character {
   is_premium: number;
 }
 
+const CHAR_COLORS: Record<string, [string, string]> = {
+  aria:  ["#8b5cf6", "#ec4899"],
+  yuki:  ["#ec4899", "#3b82f6"],
+  sofia: ["#22d3ee", "#8b5cf6"],
+  luna:  ["#7c3aed", "#ec4899"],
+};
+const CHAR_INITIALS: Record<string, string> = {
+  aria: "A", yuki: "ユ", sofia: "С", luna: "Л",
+};
+const CHAR_RING_GRAD: Record<string, string> = {
+  aria:  "linear-gradient(135deg, #8b5cf6, #ec4899)",
+  yuki:  "linear-gradient(135deg, #ec4899, #f59e0b)",
+  sofia: "linear-gradient(135deg, #22d3ee, #8b5cf6)",
+  luna:  "linear-gradient(135deg, #7c3aed, #ec4899)",
+};
+
 export default function ChatPage() {
   const { slug } = useParams<{ slug: string }>();
   const router = useRouter();
   const { tg, authHeaders, isReady } = useTelegram();
 
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [limits, setLimits] = useState<Limits | null>(null);
-  const [character, setCharacter] = useState<Character | null>(null);
-  const [isSending, setIsSending] = useState(false);
+  const [messages, setMessages]         = useState<Message[]>([]);
+  const [input, setInput]               = useState("");
+  const [limits, setLimits]             = useState<Limits | null>(null);
+  const [character, setCharacter]       = useState<Character | null>(null);
+  const [isSending, setIsSending]       = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [historyError, setHistoryError] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
+  const [retryCount, setRetryCount]     = useState(0);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
 
-  // ── Back button ───────────────────────────────
+  // Back button
   useEffect(() => {
     if (!tg) return;
     tg.BackButton.show();
     const back = () => router.push("/");
     tg.BackButton.onClick(back);
-    return () => {
-      tg.BackButton.offClick(back);
-      tg.BackButton.hide();
-    };
+    return () => { tg.BackButton.offClick(back); tg.BackButton.hide(); };
   }, [tg]);
 
-  // ── Load history + user info ──────────────────
+  // Load history + user
   useEffect(() => {
     if (!isReady || !slug) return;
     setLoadingHistory(true);
-
     setHistoryError(false);
     Promise.all([
       fetch(`/api/history?characterSlug=${slug}`, { headers: authHeaders }).then(r => r.json()),
@@ -70,55 +82,40 @@ export default function ChatPage() {
     ]).then(([hist, userData]) => {
       setLimits(userData.limits);
       const chars: Character[] = userData.characters ?? [];
-      const found = chars.find(c => c.slug === slug) ?? null;
-      setCharacter(found);
-
-      const msgs: Message[] = (hist.history ?? []).map((m: any) => ({
+      setCharacter(chars.find(c => c.slug === slug) ?? null);
+      setMessages((hist.history ?? []).map((m: any) => ({
         id: String(m.id),
         role: m.role,
         content: m.content,
         imageUrl: m.image_url ?? undefined,
-      }));
-      setMessages(msgs);
+      })));
     }).catch(() => setHistoryError(true))
       .finally(() => setLoadingHistory(false));
   }, [isReady, slug, retryCount]);
 
-  // ── Auto-scroll ───────────────────────────────
+  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // ── Send message ──────────────────────────────
+  // Send
   const send = useCallback(async () => {
     const text = input.trim();
     if (!text || isSending) return;
-
     tg?.HapticFeedback.impactOccurred("light");
 
-    const userMsg: Message = {
-      id: Date.now() + "-user",
-      role: "user",
-      content: text,
-    };
-    const loadingMsg: Message = {
-      id: Date.now() + "-loading",
-      role: "assistant",
-      content: "",
-      isLoading: true,
-    };
-
-    setMessages(prev => [...prev, userMsg, loadingMsg]);
+    const userMsg: Message = { id: Date.now() + "-u", role: "user", content: text };
+    const loadMsg: Message = { id: Date.now() + "-l", role: "assistant", content: "", isLoading: true };
+    setMessages(prev => [...prev, userMsg, loadMsg]);
     setInput("");
     setIsSending(true);
 
     try {
-      const res = await fetch("/api/chat", {
+      const res  = await fetch("/api/chat", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ characterSlug: slug, message: text }),
       });
-
       const data = await res.json();
 
       if (res.status === 429) {
@@ -127,22 +124,15 @@ export default function ChatPage() {
         setMessages(prev => prev.filter(m => !m.isLoading));
         return;
       }
-
       if (!res.ok) throw new Error(data.error ?? "Unknown error");
 
-      const aiMsg: Message = {
-        id: Date.now() + "-ai",
-        role: "assistant",
-        content: data.text,
-        imageUrl: data.imageUrl,
-        imageGenerationFailed: data.imageGenerationFailed,
-      };
-
-      setMessages(prev => [...prev.filter(m => !m.isLoading), aiMsg]);
+      setMessages(prev => [
+        ...prev.filter(m => !m.isLoading),
+        { id: Date.now() + "-ai", role: "assistant", content: data.text, imageUrl: data.imageUrl, imageGenerationFailed: data.imageGenerationFailed },
+      ]);
       setLimits(data.limits);
       tg?.HapticFeedback.notificationOccurred("success");
-
-    } catch (e: any) {
+    } catch {
       setMessages(prev => prev.filter(m => !m.isLoading));
       tg?.showAlert("Ошибка соединения, попробуй ещё раз");
       tg?.HapticFeedback.notificationOccurred("error");
@@ -153,19 +143,13 @@ export default function ChatPage() {
   }, [input, isSending, slug, authHeaders, tg]);
 
   const handleKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
-  const clearHistory = async () => {
+  const clearHistory = () => {
     tg?.showConfirm("Очистить историю чата?", async (ok) => {
       if (!ok) return;
-      await fetch(`/api/history?characterSlug=${slug}`, {
-        method: "DELETE",
-        headers: authHeaders,
-      });
+      await fetch(`/api/history?characterSlug=${slug}`, { method: "DELETE", headers: authHeaders });
       setMessages([]);
     });
   };
@@ -174,82 +158,117 @@ export default function ChatPage() {
     limits?.messages.limit != null &&
     (limits.messages.used ?? 0) >= limits.messages.limit;
 
-  // ── Render ────────────────────────────────────
+  const charName   = character?.name ?? slug;
+  const ringGrad   = CHAR_RING_GRAD[slug] ?? "linear-gradient(135deg, #8b5cf6, #ec4899)";
+  const charColors = CHAR_COLORS[slug] ?? ["#8b5cf6", "#ec4899"] as [string, string];
+  const charInitial = CHAR_INITIALS[slug] ?? charName[0]?.toUpperCase() ?? "?";
+
   return (
-    <div className="flex flex-col h-screen bg-[#05050e]">
-      {/* Header */}
-      <div className="flex-none px-4 py-3 bg-[#0c0c1d]/90 backdrop-blur-xl border-b border-purple-500/10 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 relative">
-          <AvatarImage slug={slug} name={character?.name ?? slug} avatarUrl={character?.avatar_url} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-white text-sm truncate">
-            {character?.name ?? slug}
-          </p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-500/60 animate-pulse" />
-            <p className="text-[10px] text-gray-500">всегда онлайн</p>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg)" }}>
+
+      {/* ── Chat header ── */}
+      <div className="chat-header">
+        <button className="back-btn" onClick={() => router.push("/")}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="12" x2="5" y2="12"/>
+            <polyline points="12 19 5 12 12 5"/>
+          </svg>
+        </button>
+
+        {/* Avatar ring */}
+        <div style={{ width: 40, height: 40, padding: 2, borderRadius: "50%", background: ringGrad, flexShrink: 0 }}>
+          <div className="avatar-inner">
+            <AvatarInner
+              slug={slug}
+              name={charName}
+              avatarUrl={character?.avatar_url}
+              colors={charColors}
+              initial={charInitial}
+            />
+            <div className="online-dot dot-green" />
           </div>
         </div>
-        <button
-          onClick={clearHistory}
-          className="text-gray-600 hover:text-gray-400 transition-colors p-1"
-        >
-          <TrashIcon />
+
+        {/* Name & status */}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
+            {charName}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 1 }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", boxShadow: "0 0 5px #22c55e", display: "inline-block" }} />
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>всегда онлайн</span>
+          </div>
+        </div>
+
+        {/* More button */}
+        <button className="btn-icon-lumina" onClick={clearHistory}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+            <path d="M10 11v6M14 11v6"/>
+            <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+          </svg>
         </button>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#05050e]">
+      {/* ── Messages ── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px", display: "flex", flexDirection: "column", gap: 12 }}>
         {loadingHistory ? (
-          <div className="flex justify-center pt-20">
-            <div className="w-8 h-8 rounded-full border-2 border-purple-500 border-t-transparent animate-spin shadow-md shadow-purple-900/40" />
+          <div style={{ display: "flex", justifyContent: "center", paddingTop: 80 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: "50%",
+              border: "2px solid var(--violet)", borderTopColor: "transparent",
+              animation: "chatSpin 0.8s linear infinite",
+            }} />
+            <style>{`@keyframes chatSpin { to { transform: rotate(360deg); } }`}</style>
           </div>
         ) : historyError ? (
-          <div className="flex flex-col items-center justify-center h-48 text-center space-y-3">
-            <p className="text-3xl">😔</p>
-            <p className="text-gray-400 text-sm">Не удалось загрузить историю</p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 200, gap: 12, textAlign: "center" }}>
+            <p style={{ fontSize: 40 }}>😔</p>
+            <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Не удалось загрузить историю</p>
             <button
               onClick={() => setRetryCount(c => c + 1)}
-              className="text-sm text-purple-400 underline"
+              style={{ color: "var(--violet-light)", fontSize: 13, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
             >
               Попробовать снова
             </button>
           </div>
         ) : messages.length === 0 ? (
-          <EmptyState characterName={character?.name} />
+          <EmptyState characterName={charName} />
         ) : (
           messages.map((msg) => (
             <MessageBubble
               key={msg.id}
               message={msg}
-              charSlug={slug}
-              charName={character?.name ?? slug}
+              slug={slug}
+              charName={charName}
               charAvatarUrl={character?.avatar_url}
+              charColors={charColors}
+              charInitial={charInitial}
+              ringGrad={ringGrad}
             />
           ))
         )}
         <div ref={bottomRef} />
       </div>
 
-      {/* Limit warning */}
+      {/* ── Limit bar ── */}
       {!limits?.isPremium && limits?.messages.limit && (
-        <div className="flex-none px-4 pb-1">
-          <LimitBar
-            used={limits.messages.used}
-            limit={limits.messages.limit}
-          />
+        <div style={{ padding: "4px 16px", flexShrink: 0 }}>
+          <LimitBar used={limits.messages.used} limit={limits.messages.limit} />
         </div>
       )}
 
-      {/* Input area */}
-      <div className="flex-none px-4 pb-4 pt-2 bg-[#05050e] border-t border-white/[0.04]">
+      {/* ── Input ── */}
+      <div className="chat-input-wrap">
         {outOfMessages ? (
           <OutOfMessagesBar authHeaders={authHeaders} tg={tg} onPremiumActivated={() =>
             fetch("/api/user", { headers: authHeaders }).then(r => r.json()).then(d => setLimits(d.limits))
           } />
         ) : (
-          <div className="flex items-end gap-2">
+          <>
             <textarea
               ref={inputRef}
               value={input}
@@ -258,154 +277,153 @@ export default function ChatPage() {
               placeholder="Написать..."
               disabled={isSending}
               rows={1}
-              className="flex-1 bg-[#0c0c1d] text-white placeholder-gray-600 rounded-2xl px-4 py-3 text-sm resize-none border border-white/[0.06] focus:border-purple-500/40 focus:ring-0 focus:outline-none disabled:opacity-50 max-h-32"
-              style={{ lineHeight: "1.4" }}
+              className="chat-input-lumina"
             />
             <button
+              className="btn-send-lumina"
               onClick={send}
               disabled={!input.trim() || isSending}
-              className="flex-shrink-0 w-11 h-11 rounded-full bg-gradient-to-br from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all active:scale-[0.97] shadow-md shadow-purple-900/40"
             >
               {isSending ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div style={{
+                  width: 16, height: 16, borderRadius: "50%",
+                  border: "2px solid rgba(255,255,255,0.5)", borderTopColor: "#fff",
+                  animation: "chatSpin 0.8s linear infinite",
+                }} />
               ) : (
-                <SendIcon />
+                <SendSVG />
               )}
             </button>
-          </div>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-// ──────────────────────────────────────────────
-//  Message bubble
-// ──────────────────────────────────────────────
-function MessageBubble({
-  message,
-  charSlug,
-  charName,
-  charAvatarUrl,
-}: {
+// ── Message bubble ──────────────────────────────────────────
+function MessageBubble({ message, slug, charName, charAvatarUrl, charColors, charInitial, ringGrad }: {
   message: Message;
-  charSlug: string;
+  slug: string;
   charName: string;
   charAvatarUrl?: string;
+  charColors: [string, string];
+  charInitial: string;
+  ringGrad: string;
 }) {
   const isUser = message.role === "user";
   const [imgLoaded, setImgLoaded] = useState(false);
 
+  const miniRing = (
+    <div style={{ width: 30, height: 30, padding: 2, borderRadius: "50%", background: ringGrad, flexShrink: 0 }}>
+      <div className="avatar-inner">
+        <AvatarInner
+          slug={slug} name={charName} avatarUrl={charAvatarUrl}
+          colors={charColors} initial={charInitial}
+        />
+      </div>
+    </div>
+  );
+
   if (message.isLoading) {
     return (
-      <div className="flex items-end gap-2 msg-enter">
-        <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 relative bg-purple-700">
-          <AvatarImage slug={charSlug} name={charName} avatarUrl={charAvatarUrl} />
-        </div>
-        <div className="bg-[#0c0c1d] border border-white/[0.06] rounded-2xl rounded-bl-none px-4 py-3 flex gap-1.5">
-          <span className="typing-dot w-2 h-2 rounded-full bg-purple-400 inline-block" />
-          <span className="typing-dot w-2 h-2 rounded-full bg-purple-400 inline-block" />
-          <span className="typing-dot w-2 h-2 rounded-full bg-purple-400 inline-block" />
+      <div className="msg-enter" style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+        {miniRing}
+        <div className="bubble-ai">
+          <div className="typing-dots">
+            <span className="typing-dot-l" />
+            <span className="typing-dot-l" />
+            <span className="typing-dot-l" />
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`flex items-end gap-2 msg-enter ${isUser ? "flex-row-reverse" : ""}`}>
-      {!isUser && (
-        <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 relative bg-purple-700 self-end">
-          <AvatarImage slug={charSlug} name={charName} avatarUrl={charAvatarUrl} />
-        </div>
-      )}
+    <div className="msg-enter" style={{ display: "flex", alignItems: "flex-end", gap: 8, flexDirection: isUser ? "row-reverse" : "row" }}>
+      {!isUser && miniRing}
 
-      <div className={`max-w-[78%] space-y-2 ${isUser ? "items-end" : "items-start"} flex flex-col`}>
-        {/* Text */}
+      <div style={{ maxWidth: "76%", display: "flex", flexDirection: "column", gap: 6, alignItems: isUser ? "flex-end" : "flex-start" }}>
         {message.content && (
-          <div
-            className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-              isUser
-                ? "bg-gradient-to-br from-purple-600 to-violet-700 text-white shadow-md shadow-purple-900/30 rounded-br-none"
-                : "bg-[#0c0c1d] border border-white/[0.06] text-gray-100 rounded-bl-none"
-            }`}
-          >
+          <div className={isUser ? "bubble-user" : "bubble-ai"} style={{ whiteSpace: "pre-wrap" }}>
             {message.content}
           </div>
         )}
 
-        {/* Image */}
         {message.imageUrl && (
-          <div className="w-full rounded-2xl overflow-hidden">
-            {!imgLoaded && (
-              <div className="w-full h-48 shimmer rounded-2xl" />
-            )}
+          <div style={{ width: "100%", borderRadius: 16, overflow: "hidden" }}>
+            {!imgLoaded && <div className="shimmer" style={{ width: "100%", height: 200, borderRadius: 16 }} />}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={message.imageUrl}
-              alt="Generated scene"
-              className={`w-full rounded-2xl object-cover transition-opacity duration-300 ${imgLoaded ? "opacity-100" : "opacity-0 absolute"}`}
+              alt="Generated"
+              style={{
+                width: "100%", borderRadius: 16, objectFit: "cover",
+                display: imgLoaded ? "block" : "none",
+              }}
               onLoad={() => setImgLoaded(true)}
             />
           </div>
         )}
 
-        {/* Image generation failure notice */}
         {message.imageGenerationFailed && (
-          <p className="text-[11px] text-gray-600 italic">📷 Не удалось сгенерировать фото</p>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>
+            📷 Не удалось сгенерировать фото
+          </p>
         )}
       </div>
     </div>
   );
 }
 
-// ──────────────────────────────────────────────
-//  Helpers
-// ──────────────────────────────────────────────
-
+// ── Empty state ─────────────────────────────────────────────
 function EmptyState({ characterName }: { characterName?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center h-64 text-center space-y-3 px-6">
-      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-600/20 to-violet-600/20 border border-purple-500/20 flex items-center justify-center text-3xl">
-        ✨
-      </div>
-      <div className="space-y-1">
-        <p className="text-white font-medium text-sm">
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: 260, textAlign: "center", gap: 12, padding: "0 24px" }}>
+      <div style={{
+        width: 64, height: 64, borderRadius: "50%",
+        background: "rgba(139,92,246,0.12)",
+        border: "1px solid rgba(139,92,246,0.25)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 28,
+      }}>✨</div>
+      <div>
+        <p style={{ color: "var(--text-primary)", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15 }}>
           {characterName ? `Напиши ${characterName}` : "Начни диалог"}
         </p>
-        <p className="text-gray-600 text-xs leading-relaxed">
-          Каждые 5 сообщений — уникальное фото
+        <p style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>
+          Каждые 5 сообщений — уникальное AI-фото
         </p>
       </div>
     </div>
   );
 }
 
+// ── Limit bar ───────────────────────────────────────────────
 function LimitBar({ used, limit }: { used: number; limit: number }) {
   const pct = Math.min((used / limit) * 100, 100);
-  const color =
-    pct >= 90
-      ? "bg-red-500"
-      : pct >= 60
-      ? "bg-gradient-to-r from-amber-500 to-orange-500"
-      : "bg-gradient-to-r from-purple-600 to-violet-500";
+  const fillColor = pct >= 90
+    ? "#ef4444"
+    : pct >= 65
+    ? "linear-gradient(90deg, #f59e0b, #f97316)"
+    : "var(--grad-primary)";
+
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-[10px] text-gray-600">
+    <div style={{ marginBottom: 4 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
         <span>Сообщения сегодня</span>
         <span>{used} / {limit}</span>
       </div>
-      <div className="h-1 bg-[#0c0c1d] rounded-full overflow-hidden">
-        <div className={`h-full ${color} transition-all`} style={{ width: `${pct}%` }} />
+      <div style={{ height: 3, background: "var(--bg-surface)", borderRadius: 999, overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${pct}%`, background: fillColor, borderRadius: 999, transition: "width 0.4s" }} />
       </div>
     </div>
   );
 }
 
-function OutOfMessagesBar({
-  authHeaders,
-  tg,
-  onPremiumActivated,
-}: {
+// ── Out of messages ─────────────────────────────────────────
+function OutOfMessagesBar({ authHeaders, tg, onPremiumActivated }: {
   authHeaders: Record<string, string>;
   tg: any;
   onPremiumActivated: () => void;
@@ -413,7 +431,7 @@ function OutOfMessagesBar({
   const buy = async () => {
     tg?.HapticFeedback.impactOccurred("medium");
     try {
-      const res = await fetch("/api/payment/invoice", { method: "POST", headers: authHeaders });
+      const res  = await fetch("/api/payment/invoice", { method: "POST", headers: authHeaders });
       const data = await res.json();
       if (!res.ok || !data.invoiceLink) { tg?.showAlert(data.error ?? "Ошибка"); return; }
       tg?.openInvoice(data.invoiceLink, (status: string) => {
@@ -426,80 +444,60 @@ function OutOfMessagesBar({
   };
 
   return (
-    <div className="bg-[#0c0c1d] border border-purple-500/20 rounded-2xl p-3 space-y-2">
-      <div className="flex items-center justify-between gap-3">
+    <div style={{ width: "100%", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div>
-          <p className="text-sm font-semibold text-white">Лимит исчерпан</p>
-          <p className="text-xs text-gray-400">Обновится завтра или оформите Premium</p>
+          <p style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--text-primary)", fontSize: 14 }}>
+            Лимит исчерпан
+          </p>
+          <p style={{ color: "var(--text-secondary)", fontSize: 12, marginTop: 2 }}>
+            Обновится завтра или оформите Premium
+          </p>
         </div>
-        <span className="text-2xl flex-shrink-0">💎</span>
+        <span style={{ fontSize: 24 }}>💎</span>
       </div>
-      <button
-        onClick={buy}
-        className="btn-primary w-full py-2.5 rounded-xl font-bold text-sm"
-      >
-        Купить Premium 199 ⭐
+      <button className="btn-gold-lumina" onClick={buy} style={{ padding: "12px 0", fontSize: 14, width: "100%" }}>
+        ⭐ Premium 199 ⭐
       </button>
     </div>
   );
 }
 
-// Icons
-const SendIcon = () => (
-  <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-  </svg>
-);
-
-const TrashIcon = () => (
-  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-  </svg>
-);
-
-const AVATAR_GRADIENTS: Record<string, string> = {
-  aria:  "from-purple-600 via-pink-500 to-rose-400",
-  yuki:  "from-pink-500 via-fuchsia-500 to-blue-400",
-  sofia: "from-blue-600 via-cyan-500 to-teal-400",
-  luna:  "from-indigo-600 via-violet-500 to-purple-400",
-};
-
-const AVATAR_INITIALS: Record<string, string> = {
-  aria:  "A",
-  yuki:  "ユ",
-  sofia: "С",
-  luna:  "Л",
-};
-
-function AvatarImage({
-  slug,
-  name,
-  avatarUrl,
-}: {
-  slug: string;
-  name: string;
-  avatarUrl?: string;
+// ── Avatar helper ───────────────────────────────────────────
+function AvatarInner({ slug, name, avatarUrl, colors, initial }: {
+  slug: string; name: string; avatarUrl?: string;
+  colors: [string, string]; initial: string;
 }) {
   const [imgError, setImgError] = useState(false);
-  const gradient = AVATAR_GRADIENTS[slug] ?? "from-purple-700 to-violet-500";
-  const initial = AVATAR_INITIALS[slug] ?? name[0]?.toUpperCase() ?? "?";
 
   if (avatarUrl && !imgError) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={avatarUrl}
-        alt={name}
-        className="absolute inset-0 w-full h-full object-cover"
+        src={avatarUrl} alt={name}
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
         onError={() => setImgError(true)}
       />
     );
   }
-
   return (
-    <div className={`absolute inset-0 bg-gradient-to-b ${gradient} flex items-center justify-center`}>
-      <span className="text-white font-bold text-xs opacity-90 select-none">{initial}</span>
+    <div style={{
+      width: "100%", height: "100%",
+      background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <span style={{ color: "#fff", fontWeight: 700, fontSize: 13, opacity: 0.9 }}>{initial}</span>
     </div>
+  );
+}
+
+// ── Send icon ───────────────────────────────────────────────
+function SendSVG() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+      stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13"/>
+      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+    </svg>
   );
 }

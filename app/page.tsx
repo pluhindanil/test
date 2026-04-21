@@ -26,15 +26,36 @@ interface ApiUser {
   diamonds?: number;
 }
 
+const CHAR_RING: Record<string, "ring-violet" | "ring-pink" | "ring-cyan"> = {
+  aria:  "ring-violet",
+  yuki:  "ring-pink",
+  sofia: "ring-cyan",
+  luna:  "ring-pink",
+};
+
+const CHAR_COLORS: Record<string, [string, string]> = {
+  aria:  ["#8b5cf6", "#ec4899"],
+  yuki:  ["#ec4899", "#3b82f6"],
+  sofia: ["#22d3ee", "#8b5cf6"],
+  luna:  ["#7c3aed", "#ec4899"],
+};
+
+const CHAR_INITIALS: Record<string, string> = {
+  aria:  "A",
+  yuki:  "ユ",
+  sofia: "С",
+  luna:  "Л",
+};
+
 export default function HomePage() {
   const { authHeaders, tg, isReady } = useTelegram();
   const router = useRouter();
 
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [limits, setLimits] = useState<Limits | null>(null);
-  const [apiUser, setApiUser] = useState<ApiUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [limits, setLimits]         = useState<Limits | null>(null);
+  const [apiUser, setApiUser]       = useState<ApiUser | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState("");
 
   useEffect(() => {
     if (!isReady) return;
@@ -62,10 +83,7 @@ export default function HomePage() {
   const buyPremium = async () => {
     tg?.HapticFeedback.impactOccurred("medium");
     try {
-      const res = await fetch("/api/payment/invoice", {
-        method: "POST",
-        headers: authHeaders,
-      });
+      const res = await fetch("/api/payment/invoice", { method: "POST", headers: authHeaders });
       const data = await res.json();
       if (!res.ok || !data.invoiceLink) {
         tg?.showAlert(data.error ?? "Не удалось создать счёт");
@@ -86,177 +104,197 @@ export default function HomePage() {
   };
 
   if (loading) return <LoadingScreen />;
-  if (error) return <ErrorScreen message={error} />;
+  if (error)   return <ErrorScreen message={error} />;
 
   const msgUsed  = limits?.messages.used  ?? 0;
   const msgLimit = limits?.messages.limit ?? 20;
-  const energyPct = limits?.isPremium ? 100 : Math.min(100, (msgUsed / msgLimit) * 100);
+  const energyPct = limits?.isPremium
+    ? 100
+    : Math.min(100, (msgUsed / msgLimit) * 100);
 
   return (
-    <div className="min-h-screen bg-[#0d0d2b] pb-28">
+    <div style={{ background: "var(--bg)", minHeight: "100vh", paddingBottom: 80, position: "relative", zIndex: 1 }}>
+      {/* Background orbs */}
+      <div className="bg-orb orb-1" />
+      <div className="bg-orb orb-2" />
+      <div className="bg-orb orb-3" />
 
       {/* ── Header ── */}
-      <div className="px-4 pt-8 pb-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-white tracking-tight">Lucid Dreams</h1>
-          <div className="flex items-center gap-2">
-            {/* Diamond counter */}
-            <div className="flex items-center gap-1.5 bg-[#1a1a45] rounded-full px-3 py-1.5 border border-blue-500/20">
-              <span className="text-blue-400 text-sm">💎</span>
-              <span className="text-white text-sm font-semibold">{apiUser?.diamonds ?? 0}</span>
-            </div>
-            {/* Shop */}
-            <button
-              onClick={buyPremium}
-              className="w-9 h-9 bg-[#5b2fc9] rounded-full flex items-center justify-center active:scale-95 transition-transform"
-            >
-              🛍
-            </button>
-            {/* Add character — coming soon */}
-            <button
-              onClick={() => tg?.showAlert("Создание персонажей — скоро!")}
-              className="w-9 h-9 bg-[#5b2fc9] rounded-full flex items-center justify-center text-white text-xl font-bold active:scale-95 transition-transform"
-            >
-              +
-            </button>
+      <div style={{
+        padding: "max(52px, calc(env(safe-area-inset-top) + 12px)) 20px 16px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+        background: "rgba(13,11,26,0.85)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+      }}>
+        <div className="app-logo">Lucid Dreams</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* Gem chip */}
+          <div className="gem-chip" onClick={buyPremium}>
+            <span style={{ fontSize: 14 }}>💎</span>
+            <span>{apiUser?.diamonds ?? 0}</span>
           </div>
+          {/* Add — coming soon */}
+          <button
+            className="btn-icon-lumina"
+            onClick={() => tg?.showAlert("Создание персонажей — скоро!")}
+            style={{ fontSize: 20, fontWeight: 700 }}
+          >
+            +
+          </button>
         </div>
+      </div>
 
-        {/* Energy bar */}
-        <div className="mt-5 bg-[#141432] rounded-2xl p-4 border border-white/[0.04]">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-semibold text-gray-400 tracking-widest">ЭНЕРГИЯ</span>
-            <span className="text-sm font-bold text-white">
-              {limits?.isPremium ? "∞" : `${msgUsed}/${msgLimit}`}
-            </span>
+      {/* ── Energy bar ── */}
+      <div style={{ padding: "0 16px 20px" }}>
+        <div className="energy-bar">
+          <div className="energy-label">Энергия</div>
+          <div className="energy-track">
+            <div className="energy-fill" style={{ width: `${energyPct}%` }} />
           </div>
-          <div className="h-2 bg-[#0d0d2b] rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${energyPct}%`,
-                background: "linear-gradient(90deg, #c026d3, #7c3aed)",
-              }}
-            />
+          <div className="energy-value">
+            {limits?.isPremium ? "∞" : `${msgUsed} / ${msgLimit}`}
           </div>
         </div>
+      </div>
+
+      {/* ── Section label ── */}
+      <div style={{ padding: "0 20px", marginBottom: 12 }}>
+        <div className="section-label">Мои компаньоны</div>
       </div>
 
       {/* ── Character list ── */}
-      <div className="px-4 space-y-3">
+      <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 10 }}>
         {characters.length === 0 && (
-          <div className="text-center text-gray-500 py-12 text-sm">Загружаем персонажей…</div>
+          <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 14, padding: "40px 0" }}>
+            Загружаем персонажей…
+          </p>
         )}
-        {characters.map((c) => (
-          <CharacterCard
-            key={c.id}
-            character={c}
-            locked={c.is_premium === 1 && !limits?.isPremium}
-            onSelect={openChat}
-          />
-        ))}
+
+        {characters.map((c, i) => {
+          const locked = c.is_premium === 1 && !limits?.isPremium;
+          const ring   = CHAR_RING[c.slug] ?? "ring-violet";
+          const colors = CHAR_COLORS[c.slug] ?? ["#8b5cf6", "#ec4899"];
+          const initial = CHAR_INITIALS[c.slug] ?? c.name[0]?.toUpperCase() ?? "?";
+          const delayClass = ["delay-1", "delay-2", "delay-3", "delay-4"][i] ?? "";
+          const cardColor  = ring === "ring-violet" ? "card-violet" : ring === "ring-pink" ? "card-pink" : "card-cyan";
+
+          return (
+            <div
+              key={c.id}
+              className={`companion-card ${cardColor} anim-fade-up ${delayClass}`}
+              onClick={() => openChat(c)}
+            >
+              {/* Avatar ring */}
+              <div
+                className={`avatar-ring ${ring}`}
+                style={{ width: 54, height: 54 }}
+              >
+                <div className="avatar-inner">
+                  <AvatarInner
+                    slug={c.slug}
+                    name={c.name}
+                    avatarUrl={c.avatar_url}
+                    colors={colors}
+                    initial={initial}
+                  />
+                  {/* Online dot */}
+                  <div
+                    className={`online-dot ${ring === "ring-cyan" ? "dot-violet" : "dot-green"}`}
+                  />
+                  {/* Locked overlay */}
+                  {locked && (
+                    <div style={{
+                      position: "absolute", inset: 0,
+                      background: "rgba(0,0,0,0.65)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      borderRadius: "50%",
+                    }}>
+                      <span style={{ fontSize: 18 }}>🔒</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Card body */}
+              <div className="card-body">
+                <div className="card-name">{c.name}</div>
+                <div className="card-desc">{c.description}</div>
+                <div className="card-tags">
+                  {c.style === "anime"
+                    ? <span className="lm-tag tag-pink">Аниме</span>
+                    : <span className="lm-tag tag-violet">Реализм</span>
+                  }
+                  {c.is_premium === 1 && (
+                    <span className="lm-tag tag-amber">Premium</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Arrow */}
+              <div className="card-arrow">
+                <ChevronRight />
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Premium banner */}
+        {!limits?.isPremium && (
+          <div className="premium-banner anim-fade-up delay-4" onClick={buyPremium} style={{ marginTop: 6 }}>
+            <div className="banner-eyebrow">✦ Эксклюзивно</div>
+            <div className="banner-title">Разблокируй Premium</div>
+            <div className="banner-desc">Безлимитные чаты · HD фото · Все персонажи</div>
+            <div className="banner-cta">⭐ 349 / месяц</div>
+          </div>
+        )}
       </div>
 
-      {/* ── Fixed Premium button ── */}
-      {!limits?.isPremium && (
-        <div className="fixed bottom-0 left-0 right-0 px-4 py-4 bg-[#0d0d2b]/90 backdrop-blur-md">
-          <button
-            onClick={buyPremium}
-            className="w-full py-4 rounded-2xl font-bold text-black text-base active:scale-[0.98] transition-transform"
-            style={{ background: "linear-gradient(90deg, #f59e0b, #f97316)" }}
-          >
-            ⭐ Premium 349 ⭐/мес
-          </button>
+      {/* ── Bottom navigation ── */}
+      <nav className="bottom-nav">
+        <div className="nav-item active">
+          <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span className="nav-label">Главная</span>
         </div>
-      )}
+        <div className="nav-item" onClick={() => tg?.showAlert("Создание персонажей — скоро!")}>
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          <span className="nav-label">Создать</span>
+        </div>
+        <div className="nav-item" onClick={() => tg?.showAlert("Избранное — скоро!")}>
+          <svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          <span className="nav-label">Избранное</span>
+        </div>
+        <div className="nav-item" onClick={buyPremium}>
+          <svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+          <span className="nav-label">Магазин</span>
+        </div>
+      </nav>
     </div>
   );
 }
 
 // ──────────────────────────────────────────────
-//  CharacterCard — горизонтальная карточка
+//  Avatar inner (image or gradient fallback)
 // ──────────────────────────────────────────────
-function CharacterCard({
-  character,
-  locked,
-  onSelect,
-}: {
-  character: Character;
-  locked: boolean;
-  onSelect: (c: Character) => void;
-}) {
-  const styleLabel = character.style === "anime" ? "✨ Аниме" : "🎮 Реализтик";
-
-  return (
-    <button
-      onClick={() => onSelect(character)}
-      className="w-full flex items-center gap-4 p-3 bg-[#141432] rounded-2xl border border-white/[0.05] text-left active:scale-[0.98] transition-all duration-150"
-    >
-      {/* Circle avatar */}
-      <div className="w-[64px] h-[64px] rounded-full overflow-hidden flex-shrink-0 relative">
-        <AvatarImage
-          slug={character.slug}
-          name={character.name}
-          avatarUrl={character.avatar_url}
-          className="w-full h-full"
-        />
-        {locked && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-full">
-            <span className="text-lg">🔒</span>
-          </div>
-        )}
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-white text-[15px]">{character.name}</p>
-        <p className="text-gray-400 text-[13px] mt-0.5 truncate">{character.description}</p>
-        <div className="mt-2">
-          <span className="text-[11px] bg-[#1e1e50] text-gray-300 px-2.5 py-0.5 rounded-full border border-white/[0.06]">
-            {styleLabel}
-          </span>
-        </div>
-      </div>
-
-      {/* Right sparkle */}
-      <div className="flex-shrink-0 text-purple-400 text-xl pr-1">
-        {locked ? "💎" : "✨"}
-      </div>
-    </button>
-  );
-}
-
-// ──────────────────────────────────────────────
-//  Avatar with gradient fallback
-// ──────────────────────────────────────────────
-const AVATAR_GRADIENTS: Record<string, string[]> = {
-  aria:  ["#9333ea", "#ec4899"],
-  yuki:  ["#ec4899", "#3b82f6"],
-  sofia: ["#2563eb", "#06b6d4"],
-  luna:  ["#4f46e5", "#7c3aed"],
-};
-
-const AVATAR_INITIALS: Record<string, string> = {
-  aria:  "A",
-  yuki:  "ユ",
-  sofia: "С",
-  luna:  "Л",
-};
-
-function AvatarImage({
+function AvatarInner({
   slug,
   name,
   avatarUrl,
-  className = "w-full h-full",
+  colors,
+  initial,
 }: {
   slug: string;
   name: string;
   avatarUrl?: string;
-  className?: string;
+  colors: [string, string];
+  initial: string;
 }) {
   const [imgError, setImgError] = useState(false);
-  const colors = AVATAR_GRADIENTS[slug] ?? ["#374151", "#6b7280"];
-  const initial = AVATAR_INITIALS[slug] ?? name[0]?.toUpperCase() ?? "?";
 
   if (avatarUrl && !imgError) {
     return (
@@ -264,43 +302,64 @@ function AvatarImage({
       <img
         src={avatarUrl}
         alt={name}
-        className={`${className} object-cover`}
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
         onError={() => setImgError(true)}
       />
     );
   }
 
   return (
-    <div
-      className={`${className} flex items-center justify-center`}
-      style={{ background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})` }}
-    >
-      <span className="text-white font-bold text-2xl opacity-90 select-none">{initial}</span>
+    <div style={{
+      width: "100%", height: "100%",
+      background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`,
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <span style={{ color: "#fff", fontWeight: 700, fontSize: 18, opacity: 0.9 }}>{initial}</span>
     </div>
   );
 }
 
 // ──────────────────────────────────────────────
-//  Loading / Error screens
+//  Icons
+// ──────────────────────────────────────────────
+function ChevronRight() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
+}
+
+// ──────────────────────────────────────────────
+//  Loading / Error
 // ──────────────────────────────────────────────
 function LoadingScreen() {
   return (
-    <div className="min-h-screen bg-[#0d0d2b] flex items-center justify-center">
-      <div className="text-center space-y-3">
-        <div className="w-12 h-12 rounded-full border-2 border-purple-500 border-t-transparent animate-spin mx-auto" />
-        <p className="text-gray-400 text-sm">Загрузка...</p>
+    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{
+          width: 44, height: 44, borderRadius: "50%",
+          border: "2px solid var(--violet)", borderTopColor: "transparent",
+          animation: "spin 0.8s linear infinite", margin: "0 auto 12px",
+        }} />
+        <p style={{ color: "var(--text-muted)", fontSize: 14 }}>Загрузка...</p>
       </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }
 
 function ErrorScreen({ message }: { message: string }) {
   return (
-    <div className="min-h-screen bg-[#0d0d2b] flex items-center justify-center px-6">
-      <div className="text-center space-y-3">
-        <p className="text-4xl">😔</p>
-        <p className="text-white font-medium">{message}</p>
-        <button onClick={() => window.location.reload()} className="text-sm text-purple-400 underline">
+    <div style={{ minHeight: "100vh", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", padding: "0 24px" }}>
+      <div style={{ textAlign: "center" }}>
+        <p style={{ fontSize: 48, marginBottom: 12 }}>😔</p>
+        <p style={{ color: "var(--text-primary)", fontWeight: 600, marginBottom: 12 }}>{message}</p>
+        <button
+          onClick={() => window.location.reload()}
+          style={{ color: "var(--violet-light)", fontSize: 14, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+        >
           Попробовать снова
         </button>
       </div>
