@@ -5,7 +5,7 @@ import { TelegramProvider } from "@/components/TelegramProvider";
 import "./globals.css";
 
 const dmSans = DM_Sans({
-  subsets: ["latin", "cyrillic"],
+  subsets: ["latin", "latin-ext"],
   variable: "--font-body",
   weight: ["300", "400", "500"],
   display: "swap",
