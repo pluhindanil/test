@@ -185,48 +185,54 @@ async function generateWithFal(prompt: string, style: ImageStyle): Promise<Image
   throw new Error("fal timeout");
 }
 
-// ── Replicate (SDXL) fallback ────────────────
+// ── Replicate (Flux Schnell) fallback ────────────────
 async function generateWithReplicate(prompt: string, style: ImageStyle): Promise<ImageResult> {
   const REPLICATE_KEY = process.env.REPLICATE_API_TOKEN ?? "";
   if (!REPLICATE_KEY) throw new Error("REPLICATE_API_TOKEN not set");
 
-  const version = style === "anime"
-    ? "8beff3369e81422112d93b89ca01426147de542cd4684c244b673b105188fe5f"  // AnimateDiff / Anything
-    : "7762fd07cf82c948538e41f63f77d685e02b063e37e496af4384d1d4a1f00e69"; // SDXL
-
-  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
+  // Flux Schnell — fast, free, works for both styles
+  const createRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions", {
     method: "POST",
     headers: {
-      "Authorization": `Token ${REPLICATE_KEY}`,
+      "Authorization": `Bearer ${REPLICATE_KEY}`,
       "Content-Type": "application/json",
+      "Prefer": "wait=60",
     },
     body: JSON.stringify({
-      version,
       input: {
         prompt,
-        negative_prompt: "blurry, low quality, deformed, ugly",
-        num_inference_steps: 30,
-        guidance_scale: 7.5,
-        width: 768,
-        height: 1024,
+        num_outputs: 1,
+        aspect_ratio: "3:4",
+        output_format: "webp",
+        output_quality: 80,
       },
     }),
   });
 
-  if (!createRes.ok) throw new Error(`replicate create: ${createRes.status}`);
+  if (!createRes.ok) {
+    const err = await createRes.text();
+    throw new Error(`replicate create: ${createRes.status} ${err}`);
+  }
   const prediction = await createRes.json();
+
+  // If Prefer: wait= returned a completed result immediately
+  if (prediction.status === "succeeded" && prediction.output?.[0]) {
+    return { url: prediction.output[0], provider: "replicate" };
+  }
+
   const pollUrl = prediction.urls?.get;
+  if (!pollUrl) throw new Error("replicate: no poll URL");
 
   for (let i = 0; i < 30; i++) {
     await sleep(2000);
     const pollRes = await fetch(pollUrl, {
-      headers: { "Authorization": `Token ${REPLICATE_KEY}` },
+      headers: { "Authorization": `Bearer ${REPLICATE_KEY}` },
     });
     const data = await pollRes.json();
     if (data.status === "succeeded" && data.output?.[0]) {
       return { url: data.output[0], provider: "replicate" };
     }
-    if (data.status === "failed") throw new Error("replicate failed");
+    if (data.status === "failed") throw new Error(`replicate failed: ${data.error}`);
   }
   throw new Error("replicate timeout");
 }
