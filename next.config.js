@@ -8,8 +8,6 @@ const nextConfig = {
       { protocol: "https", hostname: "pbxt.replicate.delivery" },
     ],
   },
-  // Для native модулей в server components (правильное название)
-  serverComponentsExternalPackages: ["better-sqlite3"],
 };
 
 module.exports = nextConfig;

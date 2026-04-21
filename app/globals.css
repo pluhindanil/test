@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 :root {
-  --tg-theme-bg-color: #0f0f17;
+  --tg-theme-bg-color: #05050e;
   --tg-theme-text-color: #ffffff;
-  --tg-theme-hint-color: #8b8b9a;
-  --tg-theme-link-color: #a78bfa;
-  --tg-theme-button-color: #7c3aed;
+  --tg-theme-hint-color: #9ca3af;
+  --tg-theme-link-color: #c084fc;
+  --tg-theme-button-color: #9333ea;
   --tg-theme-button-text-color: #ffffff;
 }
 
@@ -18,12 +18,16 @@
 body {
   overscroll-behavior: none;
   overflow-x: hidden;
+  background-color: #05050e;
+  background-image: radial-gradient(ellipse 80% 40% at 50% -5%, rgba(147, 51, 234, 0.15), transparent);
+  background-attachment: fixed;
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #4c1d95; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #6d28d9; }
 
 /* Message animations */
 @keyframes slideUp {
@@ -47,7 +51,31 @@ body {
   to   { background-position:  200% 0; }
 }
 .shimmer {
-  background: linear-gradient(90deg, #1e1e2e 25%, #2a2a3e 50%, #1e1e2e 75%);
+  background: linear-gradient(90deg, #0c0c1d 25%, #141430 50%, #0c0c1d 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
+}
+
+/* Text gradient utility */
+.text-gradient {
+  background: linear-gradient(135deg, #c084fc, #818cf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Primary button */
+.btn-primary {
+  background: linear-gradient(135deg, #9333ea, #7c3aed);
+  color: #ffffff;
+  box-shadow: 0 4px 24px 0 rgba(147, 51, 234, 0.35);
+  transition: all 0.15s ease;
+}
+.btn-primary:hover {
+  background: linear-gradient(135deg, #a855f7, #8b5cf6);
+  box-shadow: 0 6px 28px 0 rgba(147, 51, 234, 0.45);
+}
+.btn-primary:active {
+  transform: scale(0.97);
+  box-shadow: 0 2px 16px 0 rgba(147, 51, 234, 0.3);
 }

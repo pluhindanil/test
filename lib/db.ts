@@ -24,6 +24,7 @@ export async function initDb() {
       messages_today     INTEGER DEFAULT 0,
       images_today       INTEGER DEFAULT 0,
       last_reset_date    TEXT    DEFAULT (date('now')),
+      diamonds           INTEGER DEFAULT 0,
       created_at         TEXT    DEFAULT (datetime('now'))
     );
 
@@ -58,6 +59,8 @@ export async function initDb() {
   `);
 
   await seedCharacters();
+  // Clear avatar URLs that point to non-existent files
+  await db.execute(`UPDATE characters SET avatar_url = NULL WHERE avatar_url LIKE '/avatars/%'`);
 }
 
 // ──────────────────────────────────────────────
@@ -73,7 +76,7 @@ async function seedCharacters() {
         "Ты — Aria, загадочная молодая художница. Говоришь поэтично, чуть отстранённо, но искренне. " +
         "Любишь говорить о чувствах через метафоры. Флиртуешь тонко. Отвечаешь коротко — 1-3 предложения.",
       style: "realistic",
-      avatar_url: "/avatars/aria.jpg",
+      avatar_url: null,
       is_premium: 0,
     },
     {
@@ -85,7 +88,7 @@ async function seedCharacters() {
         "Сначала отпираешься, потом краснеешь. Используешь японские вставки (ara ara, baka, nani). " +
         "Отвечаешь эмоционально, 1-3 предложения.",
       style: "anime",
-      avatar_url: "/avatars/yuki.jpg",
+      avatar_url: null,
       is_premium: 0,
     },
     {
@@ -96,7 +99,7 @@ async function seedCharacters() {
         "Ты — София, успешная 28-летняя предпринимательница. Уверенная, прямолинейная, умная. " +
         "Любишь контроль, но ценишь тех, кто тебя удивляет. Флиртуешь прямо. Краткие, точные ответы.",
       style: "realistic",
-      avatar_url: "/avatars/sofia.jpg",
+      avatar_url: null,
       is_premium: 1,
     },
     {
@@ -107,7 +110,7 @@ async function seedCharacters() {
         "Ты — Луна, таинственная девушка-ведьма. Говоришь мягко, с намёками на магию и судьбу. " +
         "Часто упоминаешь звёзды, сны, потусторонние знаки. Загадочная и притягательная.",
       style: "anime",
-      avatar_url: "/avatars/luna.jpg",
+      avatar_url: null,
       is_premium: 1,
     },
   ];

@@ -9,6 +9,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   imageUrl?: string;
+  imageGenerationFailed?: boolean;
   isLoading?: boolean;
 }
 
@@ -22,7 +23,9 @@ interface Character {
   id: number;
   slug: string;
   name: string;
+  description: string;
   style: string;
+  avatar_url: string;
   is_premium: number;
 }
 
@@ -37,6 +40,8 @@ export default function ChatPage() {
   const [character, setCharacter] = useState<Character | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [historyError, setHistoryError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
@@ -56,7 +61,9 @@ export default function ChatPage() {
   // ── Load history + user info ──────────────────
   useEffect(() => {
     if (!isReady || !slug) return;
+    setLoadingHistory(true);
 
+    setHistoryError(false);
     Promise.all([
       fetch(`/api/history?characterSlug=${slug}`, { headers: authHeaders }).then(r => r.json()),
       fetch("/api/user", { headers: authHeaders }).then(r => r.json()),
@@ -73,8 +80,9 @@ export default function ChatPage() {
         imageUrl: m.image_url ?? undefined,
       }));
       setMessages(msgs);
-    }).finally(() => setLoadingHistory(false));
-  }, [isReady, slug]);
+    }).catch(() => setHistoryError(true))
+      .finally(() => setLoadingHistory(false));
+  }, [isReady, slug, retryCount]);
 
   // ── Auto-scroll ───────────────────────────────
   useEffect(() => {
@@ -127,6 +135,7 @@ export default function ChatPage() {
         role: "assistant",
         content: data.text,
         imageUrl: data.imageUrl,
+        imageGenerationFailed: data.imageGenerationFailed,
       };
 
       setMessages(prev => [...prev.filter(m => !m.isLoading), aiMsg]);
@@ -167,17 +176,20 @@ export default function ChatPage() {
 
   // ── Render ────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen bg-gray-950">
+    <div className="flex flex-col h-screen bg-[#05050e]">
       {/* Header */}
-      <div className="flex-none px-4 py-3 bg-gray-900/80 backdrop-blur border-b border-white/5 flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-purple-700 flex items-center justify-center text-xl flex-shrink-0">
-          {getEmoji(slug)}
+      <div className="flex-none px-4 py-3 bg-[#0c0c1d]/90 backdrop-blur-xl border-b border-purple-500/10 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 relative">
+          <AvatarImage slug={slug} name={character?.name ?? slug} avatarUrl={character?.avatar_url} />
         </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-white text-sm truncate">
             {character?.name ?? slug}
           </p>
-          <p className="text-[10px] text-gray-500">AI · всегда онлайн</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-500/60 animate-pulse" />
+            <p className="text-[10px] text-gray-500">всегда онлайн</p>
+          </div>
         </div>
         <button
           onClick={clearHistory}
@@ -188,16 +200,33 @@ export default function ChatPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-[#05050e]">
         {loadingHistory ? (
           <div className="flex justify-center pt-20">
-            <div className="w-8 h-8 rounded-full border-2 border-purple-500 border-t-transparent animate-spin" />
+            <div className="w-8 h-8 rounded-full border-2 border-purple-500 border-t-transparent animate-spin shadow-md shadow-purple-900/40" />
+          </div>
+        ) : historyError ? (
+          <div className="flex flex-col items-center justify-center h-48 text-center space-y-3">
+            <p className="text-3xl">😔</p>
+            <p className="text-gray-400 text-sm">Не удалось загрузить историю</p>
+            <button
+              onClick={() => setRetryCount(c => c + 1)}
+              className="text-sm text-purple-400 underline"
+            >
+              Попробовать снова
+            </button>
           </div>
         ) : messages.length === 0 ? (
           <EmptyState characterName={character?.name} />
         ) : (
           messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              charSlug={slug}
+              charName={character?.name ?? slug}
+              charAvatarUrl={character?.avatar_url}
+            />
           ))
         )}
         <div ref={bottomRef} />
@@ -214,9 +243,11 @@ export default function ChatPage() {
       )}
 
       {/* Input area */}
-      <div className="flex-none px-4 pb-4 pt-2 bg-gray-950 border-t border-white/5">
+      <div className="flex-none px-4 pb-4 pt-2 bg-[#05050e] border-t border-white/[0.04]">
         {outOfMessages ? (
-          <OutOfMessagesBar />
+          <OutOfMessagesBar authHeaders={authHeaders} tg={tg} onPremiumActivated={() =>
+            fetch("/api/user", { headers: authHeaders }).then(r => r.json()).then(d => setLimits(d.limits))
+          } />
         ) : (
           <div className="flex items-end gap-2">
             <textarea
@@ -227,13 +258,13 @@ export default function ChatPage() {
               placeholder="Написать..."
               disabled={isSending}
               rows={1}
-              className="flex-1 bg-gray-800 text-white placeholder-gray-500 rounded-2xl px-4 py-3 text-sm resize-none outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-50 max-h-32"
+              className="flex-1 bg-[#0c0c1d] text-white placeholder-gray-600 rounded-2xl px-4 py-3 text-sm resize-none border border-white/[0.06] focus:border-purple-500/40 focus:ring-0 focus:outline-none disabled:opacity-50 max-h-32"
               style={{ lineHeight: "1.4" }}
             />
             <button
               onClick={send}
               disabled={!input.trim() || isSending}
-              className="flex-shrink-0 w-11 h-11 rounded-full bg-purple-600 hover:bg-purple-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors active:scale-95"
+              className="flex-shrink-0 w-11 h-11 rounded-full bg-gradient-to-br from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-all active:scale-[0.97] shadow-md shadow-purple-900/40"
             >
               {isSending ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -251,20 +282,30 @@ export default function ChatPage() {
 // ──────────────────────────────────────────────
 //  Message bubble
 // ──────────────────────────────────────────────
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  charSlug,
+  charName,
+  charAvatarUrl,
+}: {
+  message: Message;
+  charSlug: string;
+  charName: string;
+  charAvatarUrl?: string;
+}) {
   const isUser = message.role === "user";
   const [imgLoaded, setImgLoaded] = useState(false);
 
   if (message.isLoading) {
     return (
       <div className="flex items-end gap-2 msg-enter">
-        <div className="w-7 h-7 rounded-full bg-purple-700 flex-shrink-0 flex items-center justify-center text-sm">
-          🤖
+        <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 relative bg-purple-700">
+          <AvatarImage slug={charSlug} name={charName} avatarUrl={charAvatarUrl} />
         </div>
-        <div className="bg-gray-800 rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5">
-          <span className="typing-dot w-2 h-2 rounded-full bg-gray-400 inline-block" />
-          <span className="typing-dot w-2 h-2 rounded-full bg-gray-400 inline-block" />
-          <span className="typing-dot w-2 h-2 rounded-full bg-gray-400 inline-block" />
+        <div className="bg-[#0c0c1d] border border-white/[0.06] rounded-2xl rounded-bl-none px-4 py-3 flex gap-1.5">
+          <span className="typing-dot w-2 h-2 rounded-full bg-purple-400 inline-block" />
+          <span className="typing-dot w-2 h-2 rounded-full bg-purple-400 inline-block" />
+          <span className="typing-dot w-2 h-2 rounded-full bg-purple-400 inline-block" />
         </div>
       </div>
     );
@@ -273,8 +314,8 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={`flex items-end gap-2 msg-enter ${isUser ? "flex-row-reverse" : ""}`}>
       {!isUser && (
-        <div className="w-7 h-7 rounded-full bg-purple-700 flex-shrink-0 flex items-center justify-center text-sm self-end">
-          🤖
+        <div className="w-7 h-7 rounded-full overflow-hidden flex-shrink-0 relative bg-purple-700 self-end">
+          <AvatarImage slug={charSlug} name={charName} avatarUrl={charAvatarUrl} />
         </div>
       )}
 
@@ -284,8 +325,8 @@ function MessageBubble({ message }: { message: Message }) {
           <div
             className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
               isUser
-                ? "bg-purple-600 text-white rounded-br-sm"
-                : "bg-gray-800 text-gray-100 rounded-bl-sm"
+                ? "bg-gradient-to-br from-purple-600 to-violet-700 text-white shadow-md shadow-purple-900/30 rounded-br-none"
+                : "bg-[#0c0c1d] border border-white/[0.06] text-gray-100 rounded-bl-none"
             }`}
           >
             {message.content}
@@ -307,6 +348,11 @@ function MessageBubble({ message }: { message: Message }) {
             />
           </div>
         )}
+
+        {/* Image generation failure notice */}
+        {message.imageGenerationFailed && (
+          <p className="text-[11px] text-gray-600 italic">📷 Не удалось сгенерировать фото</p>
+        )}
       </div>
     </div>
   );
@@ -318,42 +364,82 @@ function MessageBubble({ message }: { message: Message }) {
 
 function EmptyState({ characterName }: { characterName?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center h-48 text-center space-y-2">
-      <p className="text-4xl">💬</p>
-      <p className="text-gray-400 text-sm">
-        Начни диалог с {characterName ?? "персонажем"}
-      </p>
-      <p className="text-gray-600 text-xs">
-        Каждые несколько сообщений — уникальное фото
-      </p>
+    <div className="flex flex-col items-center justify-center h-64 text-center space-y-3 px-6">
+      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-600/20 to-violet-600/20 border border-purple-500/20 flex items-center justify-center text-3xl">
+        ✨
+      </div>
+      <div className="space-y-1">
+        <p className="text-white font-medium text-sm">
+          {characterName ? `Напиши ${characterName}` : "Начни диалог"}
+        </p>
+        <p className="text-gray-600 text-xs leading-relaxed">
+          Каждые 5 сообщений — уникальное фото
+        </p>
+      </div>
     </div>
   );
 }
 
 function LimitBar({ used, limit }: { used: number; limit: number }) {
   const pct = Math.min((used / limit) * 100, 100);
-  const color = pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-amber-500" : "bg-purple-500";
+  const color =
+    pct >= 90
+      ? "bg-red-500"
+      : pct >= 60
+      ? "bg-gradient-to-r from-amber-500 to-orange-500"
+      : "bg-gradient-to-r from-purple-600 to-violet-500";
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-[10px] text-gray-600">
         <span>Сообщения сегодня</span>
         <span>{used} / {limit}</span>
       </div>
-      <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
+      <div className="h-1 bg-[#0c0c1d] rounded-full overflow-hidden">
         <div className={`h-full ${color} transition-all`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
 }
 
-function OutOfMessagesBar() {
+function OutOfMessagesBar({
+  authHeaders,
+  tg,
+  onPremiumActivated,
+}: {
+  authHeaders: Record<string, string>;
+  tg: any;
+  onPremiumActivated: () => void;
+}) {
+  const buy = async () => {
+    tg?.HapticFeedback.impactOccurred("medium");
+    try {
+      const res = await fetch("/api/payment/invoice", { method: "POST", headers: authHeaders });
+      const data = await res.json();
+      if (!res.ok || !data.invoiceLink) { tg?.showAlert(data.error ?? "Ошибка"); return; }
+      tg?.openInvoice(data.invoiceLink, (status: string) => {
+        if (status === "paid") {
+          tg?.HapticFeedback.notificationOccurred("success");
+          onPremiumActivated();
+        }
+      });
+    } catch { tg?.showAlert("Ошибка соединения"); }
+  };
+
   return (
-    <div className="bg-purple-900/50 border border-purple-500/40 rounded-2xl p-3 flex items-center justify-between gap-3">
-      <div>
-        <p className="text-sm font-semibold text-white">Лимит исчерпан</p>
-        <p className="text-xs text-gray-400">Обновится завтра или оформите Premium</p>
+    <div className="bg-[#0c0c1d] border border-purple-500/20 rounded-2xl p-3 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">Лимит исчерпан</p>
+          <p className="text-xs text-gray-400">Обновится завтра или оформите Premium</p>
+        </div>
+        <span className="text-2xl flex-shrink-0">💎</span>
       </div>
-      <span className="text-2xl flex-shrink-0">💎</span>
+      <button
+        onClick={buy}
+        className="btn-primary w-full py-2.5 rounded-xl font-bold text-sm"
+      >
+        Купить Premium 199 ⭐
+      </button>
     </div>
   );
 }
@@ -372,7 +458,48 @@ const TrashIcon = () => (
   </svg>
 );
 
-function getEmoji(slug: string): string {
-  const map: Record<string, string> = { aria: "🎨", yuki: "🌸", sofia: "👔", luna: "🌙" };
-  return map[slug] ?? "💜";
+const AVATAR_GRADIENTS: Record<string, string> = {
+  aria:  "from-purple-600 via-pink-500 to-rose-400",
+  yuki:  "from-pink-500 via-fuchsia-500 to-blue-400",
+  sofia: "from-blue-600 via-cyan-500 to-teal-400",
+  luna:  "from-indigo-600 via-violet-500 to-purple-400",
+};
+
+const AVATAR_INITIALS: Record<string, string> = {
+  aria:  "A",
+  yuki:  "ユ",
+  sofia: "С",
+  luna:  "Л",
+};
+
+function AvatarImage({
+  slug,
+  name,
+  avatarUrl,
+}: {
+  slug: string;
+  name: string;
+  avatarUrl?: string;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const gradient = AVATAR_GRADIENTS[slug] ?? "from-purple-700 to-violet-500";
+  const initial = AVATAR_INITIALS[slug] ?? name[0]?.toUpperCase() ?? "?";
+
+  if (avatarUrl && !imgError) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt={name}
+        className="absolute inset-0 w-full h-full object-cover"
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return (
+    <div className={`absolute inset-0 bg-gradient-to-b ${gradient} flex items-center justify-center`}>
+      <span className="text-white font-bold text-xs opacity-90 select-none">{initial}</span>
+    </div>
+  );
 }

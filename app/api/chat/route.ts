@@ -107,16 +107,16 @@ export async function POST(req: NextRequest) {
   let llmResult;
   try {
     llmResult = await chat(character.personality, chatHistory, message, messageCount);
-  } catch (e) {
-    console.error("LLM error:", e);
-    return NextResponse.json({ error: "AI unavailable" }, { status: 503 });
+  } catch (e: any) {
+    console.error("LLM error:", e?.message ?? e);
+    return NextResponse.json({ error: "AI unavailable", detail: e?.message }, { status: 503 });
   }
 
   // ── Image generation ──────────────────────────
   let imageUrl: string | undefined;
+  let imageGenerationFailed = false;
 
   if (llmResult.shouldGenerateImage) {
-    // Атомарно пробуем списать лимит изображений
     const imageAllowed = await tryConsumeImage(dbUser.id, limits.isPremium, FREE_IMG_LIMIT);
 
     if (imageAllowed) {
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
         imageUrl = imgResult.url;
       } catch (e) {
         console.error("Image generation failed:", e);
-        // Не падаем — просто пропускаем картинку
+        imageGenerationFailed = true;
       }
     }
   }
@@ -144,6 +144,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     text: llmResult.text,
     imageUrl,
+    imageGenerationFailed,
     limits: updatedLimits,
     messageCount,
   });

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { useTelegram } from "@/components/TelegramProvider";
 
 interface Character {
@@ -51,11 +50,39 @@ export default function HomePage() {
 
   const openChat = (char: Character) => {
     if (char.is_premium && !limits?.isPremium) {
-      tg?.showAlert("Этот персонаж доступен только Premium подписчикам 💎");
+      tg?.HapticFeedback.notificationOccurred("warning");
+      buyPremium();
       return;
     }
     tg?.HapticFeedback.selectionChanged();
     router.push(`/chat/${char.slug}`);
+  };
+
+  const buyPremium = async () => {
+    tg?.HapticFeedback.impactOccurred("medium");
+    try {
+      const res = await fetch("/api/payment/invoice", {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.invoiceLink) {
+        tg?.showAlert(data.error ?? "Не удалось создать счёт");
+        return;
+      }
+      tg?.openInvoice(data.invoiceLink, (status) => {
+        if (status === "paid") {
+          tg?.HapticFeedback.notificationOccurred("success");
+          // Перезагружаем данные пользователя
+          fetch("/api/user", { headers: authHeaders })
+            .then((r) => r.json())
+            .then((d) => setLimits(d.limits ?? null));
+          tg?.showAlert("🎉 Premium активирован! Добро пожаловать!");
+        }
+      });
+    } catch {
+      tg?.showAlert("Ошибка соединения");
+    }
   };
 
   if (loading) return <LoadingScreen />;
@@ -65,15 +92,17 @@ export default function HomePage() {
   const premiumChars = characters.filter((c) => c.is_premium);
 
   return (
-    <div className="min-h-screen bg-gray-950 pb-24">
+    <div className="min-h-screen bg-[#05050e] pb-24">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-gray-950/80 backdrop-blur-md px-4 pt-4 pb-3 border-b border-white/5">
+      <div className="sticky top-0 z-10 bg-[#05050e]/95 backdrop-blur-xl px-4 pt-4 pb-3 border-b border-white/[0.04]">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-white">
-              Привет, {apiUser?.firstName ?? "друг"} 👋
+              Привет,{" "}
+              <span className="text-gradient">{apiUser?.firstName ?? "друг"}</span>
+              {" "}👋
             </h1>
-            <p className="text-xs text-gray-500 mt-0.5">Выбери персонажа</p>
+            <p className="text-xs text-gray-400 mt-0.5">Выбери персонажа</p>
           </div>
           <LimitsBadge limits={limits} />
         </div>
@@ -106,7 +135,7 @@ export default function HomePage() {
         )}
 
         {/* Upgrade banner for free users */}
-        {!limits?.isPremium && <UpgradeBanner />}
+        {!limits?.isPremium && <UpgradeBanner onBuy={buyPremium} />}
       </div>
     </div>
   );
@@ -130,23 +159,23 @@ function CharacterCard({
   return (
     <button
       onClick={() => onSelect(character)}
-      className="relative text-left rounded-2xl overflow-hidden bg-gray-900 border border-white/5 active:scale-95 transition-transform"
+      className="relative text-left rounded-2xl overflow-hidden bg-[#0c0c1d] border border-purple-500/[0.12] active:scale-[0.97] transition-all duration-150"
     >
-      {/* Avatar */}
-      <div className="relative w-full aspect-[3/4] bg-gray-800">
-        <div className="absolute inset-0 flex items-center justify-center text-5xl">
-          {getEmoji(character.slug)}
-        </div>
-        {locked && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-            <span className="text-3xl">🔒</span>
-          </div>
-        )}
+      {/* Full-height poster image */}
+      <div className="relative w-full aspect-[3/4]">
+        <AvatarImage slug={character.slug} name={character.name} avatarUrl={character.avatar_url} />
+
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
+
+        {/* Style badge */}
         <div className="absolute top-2 left-2">
-          <span className="text-[10px] font-medium bg-black/50 text-gray-300 px-2 py-0.5 rounded-full">
+          <span className="text-[10px] font-medium bg-black/50 text-gray-300 px-2 py-0.5 rounded-full backdrop-blur-sm">
             {styleLabel}
           </span>
         </div>
+
+        {/* Premium badge */}
         {character.is_premium === 1 && (
           <div className="absolute top-2 right-2">
             <span className="text-[10px] font-bold bg-amber-500 text-black px-2 py-0.5 rounded-full">
@@ -154,14 +183,22 @@ function CharacterCard({
             </span>
           </div>
         )}
-      </div>
 
-      {/* Info */}
-      <div className="p-2.5">
-        <p className="font-semibold text-white text-sm">{character.name}</p>
-        <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-2">
-          {character.description}
-        </p>
+        {/* Locked overlay */}
+        {locked && (
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-1">
+            <span className="text-3xl">🔒</span>
+            <span className="text-[11px] text-white/80 font-medium">Premium</span>
+          </div>
+        )}
+
+        {/* Name + description overlaid at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 p-3">
+          <p className="font-semibold text-white text-sm">{character.name}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5 line-clamp-2">
+            {character.description}
+          </p>
+        </div>
       </div>
     </button>
   );
@@ -188,40 +225,58 @@ function LimitsBadge({ limits }: { limits: Limits | null }) {
   if (!limits) return null;
   if (limits.isPremium) {
     return (
-      <span className="text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full font-medium">
+      <span className="text-xs bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full font-medium">
         💎 Premium
       </span>
     );
   }
   return (
-    <span className="text-xs bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2.5 py-1 rounded-full">
+    <span className="text-xs bg-purple-500/10 text-purple-400 border border-purple-500/20 px-2.5 py-1 rounded-full">
       ⚡ {limits.messages.used}/{limits.messages.limit}
     </span>
   );
 }
 
-function UpgradeBanner() {
+function UpgradeBanner({ onBuy }: { onBuy: () => void }) {
   return (
-    <div className="rounded-2xl bg-gradient-to-r from-purple-900/50 to-violet-900/50 border border-purple-500/30 p-4">
-      <div className="flex items-center gap-3">
-        <span className="text-3xl">💎</span>
+    <div className="rounded-2xl bg-gradient-to-br from-purple-950/80 to-violet-950/80 border border-purple-500/20 p-4 shadow-lg shadow-purple-900/20">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-2xl flex-shrink-0">
+          💎
+        </div>
         <div>
-          <p className="font-semibold text-white text-sm">Premium подписка</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Безлимитное общение · Все персонажи · Больше фото
-          </p>
+          <p className="font-bold text-white text-sm">Premium подписка</p>
+          <p className="text-xs text-purple-300/60 mt-0.5">30 дней · 199 Telegram Stars</p>
         </div>
       </div>
+      <div className="space-y-1.5 mb-4">
+        {[
+          "Безлимитные сообщения каждый день",
+          "Все персонажи включая эксклюзивных",
+          "Больше AI-фото в каждом чате",
+        ].map((f) => (
+          <div key={f} className="flex items-center gap-2">
+            <span className="text-purple-400 text-xs">✦</span>
+            <p className="text-xs text-gray-300">{f}</p>
+          </div>
+        ))}
+      </div>
+      <button
+        onClick={onBuy}
+        className="btn-primary w-full py-3 rounded-xl font-bold text-sm"
+      >
+        Купить 199 ⭐
+      </button>
     </div>
   );
 }
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+    <div className="min-h-screen bg-[#05050e] flex items-center justify-center">
       <div className="text-center space-y-3">
-        <div className="w-12 h-12 rounded-full border-2 border-purple-500 border-t-transparent animate-spin mx-auto" />
-        <p className="text-gray-500 text-sm">Загрузка...</p>
+        <div className="w-12 h-12 rounded-full border-2 border-purple-500 border-t-transparent animate-spin mx-auto shadow-lg shadow-purple-900/40" />
+        <p className="text-gray-400 text-sm">Загрузка...</p>
       </div>
     </div>
   );
@@ -229,7 +284,7 @@ function LoadingScreen() {
 
 function ErrorScreen({ message }: { message: string }) {
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center px-6">
+    <div className="min-h-screen bg-[#05050e] flex items-center justify-center px-6">
       <div className="text-center space-y-3">
         <p className="text-4xl">😔</p>
         <p className="text-white font-medium">{message}</p>
@@ -244,13 +299,50 @@ function ErrorScreen({ message }: { message: string }) {
   );
 }
 
-// Emoji placeholders for avatars (replace with real images)
-function getEmoji(slug: string): string {
-  const map: Record<string, string> = {
-    aria:  "🎨",
-    yuki:  "🌸",
-    sofia: "👔",
-    luna:  "🌙",
-  };
-  return map[slug] ?? "👤";
+const AVATAR_GRADIENTS: Record<string, string> = {
+  aria:  "from-purple-600 via-pink-500 to-rose-400",
+  yuki:  "from-pink-500 via-fuchsia-500 to-blue-400",
+  sofia: "from-blue-600 via-cyan-500 to-teal-400",
+  luna:  "from-indigo-600 via-violet-500 to-purple-400",
+};
+
+const AVATAR_INITIALS: Record<string, string> = {
+  aria:  "A",
+  yuki:  "ユ",
+  sofia: "С",
+  luna:  "Л",
+};
+
+function AvatarImage({
+  slug,
+  name,
+  avatarUrl,
+  className = "absolute inset-0 w-full h-full",
+}: {
+  slug: string;
+  name: string;
+  avatarUrl?: string;
+  className?: string;
+}) {
+  const [imgError, setImgError] = useState(false);
+  const gradient = AVATAR_GRADIENTS[slug] ?? "from-gray-700 to-gray-500";
+  const initial = AVATAR_INITIALS[slug] ?? name[0]?.toUpperCase() ?? "?";
+
+  if (avatarUrl && !imgError) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarUrl}
+        alt={name}
+        className={`${className} object-cover`}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+
+  return (
+    <div className={`${className} bg-gradient-to-b ${gradient} flex items-center justify-center`}>
+      <span className="text-white font-bold text-5xl opacity-80 select-none">{initial}</span>
+    </div>
+  );
 }
