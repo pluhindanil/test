@@ -3,6 +3,7 @@ import { getUserFromRequestSafe } from "@/lib/telegram";
 import { upsertUser, initDb } from "@/lib/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const PREMIUM_STARS = 199;
 

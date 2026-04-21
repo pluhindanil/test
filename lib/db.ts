@@ -65,7 +65,12 @@ export async function initDb() {
 //  Seed characters
 // ──────────────────────────────────────────────
 async function seedCharacters() {
-  // Remove old characters if they exist (slug migration)
+  // Remove old characters and their conversations (slug migration)
+  await db.execute(
+    `DELETE FROM conversations WHERE character_id IN (
+      SELECT id FROM characters WHERE slug IN ('aria','yuki','sofia','luna')
+    )`
+  );
   await db.execute(
     `DELETE FROM characters WHERE slug IN ('aria','yuki','sofia','luna')`
   );

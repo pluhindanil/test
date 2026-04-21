@@ -7,6 +7,7 @@ import { getUserFromRequestSafe } from "@/lib/telegram";
 import { upsertUser, getCharacterBySlug, getHistory, clearHistory, initDb } from "@/lib/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 let dbInitialized = false;
 async function ensureDb() {

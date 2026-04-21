@@ -20,6 +20,7 @@ import {
 import { chat, generateImage, buildImagePromptFromContext } from "@/lib/ai";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 // Инициализируем БД при первом запросе
 let dbInitialized = false;

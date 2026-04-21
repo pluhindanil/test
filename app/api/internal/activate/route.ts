@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { activatePremium, initDb } from "@/lib/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 let dbInitialized = false;
 async function ensureDb() {
