@@ -32,19 +32,20 @@ export default function ChatPage() {
     tg.expand(); // ensure full screen on iPhone
     const back = () => router.push("/");
     tg.BackButton.onClick(back);
-    // Track viewport changes (keyboard open/close on iOS)
+    // Track viewport height changes (keyboard open/close on iOS)
+    const tgAny = tg as any;
     const onViewportChanged = () => {
       document.documentElement.style.setProperty(
         "--tg-viewport-height",
         `${tg.viewportHeight}px`
       );
     };
-    tg.onEvent("viewportChanged", onViewportChanged);
-    onViewportChanged(); // set initial value
+    tgAny.onEvent?.("viewportChanged", onViewportChanged);
+    onViewportChanged();
     return () => {
       tg.BackButton.offClick(back);
       tg.BackButton.hide();
-      tg.offEvent("viewportChanged", onViewportChanged);
+      tgAny.offEvent?.("viewportChanged", onViewportChanged);
     };
   }, [tg, router]);
 
