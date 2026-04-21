@@ -59,8 +59,6 @@ export async function initDb() {
   `);
 
   await seedCharacters();
-  // Clear avatar URLs that point to non-existent files
-  await db.execute(`UPDATE characters SET avatar_url = NULL WHERE avatar_url LIKE '/avatars/%'`);
 }
 
 // ──────────────────────────────────────────────
