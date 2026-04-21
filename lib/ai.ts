@@ -54,9 +54,7 @@ export async function chat(
       messages,
       temperature: 0.85,
       max_tokens: 350,
-      response_format: shouldGenerateImage
-        ? { type: "json_object" }
-        : { type: "text" },
+      ...(shouldGenerateImage && { response_format: { type: "json_object" } }),
     }),
   });
 
